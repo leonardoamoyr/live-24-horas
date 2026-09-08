@@ -546,10 +546,22 @@ case "$INSTALL_SSL" in
 
         separator
 
-        echo -e "${BOLD}Seu painel seguro:${NC}"
+        echo -e "${BOLD}ACESSO RECOMENDADO COM SSL:${NC}"
         echo
         echo -e "${GREEN}https://${DOMAIN}:5443${NC}"
         echo
+
+        if [ -n "$PUBLIC_IP" ]; then
+            echo -e "${BOLD}ACESSO TEMPORÁRIO PELO IP:${NC}"
+            echo
+            echo -e "${GREEN}http://${PUBLIC_IP}:5080${NC}"
+            echo
+            echo "Se o subdomínio ainda não abrir no seu dispositivo,"
+            echo "aguarde a propagação/atualização do DNS e utilize"
+            echo "temporariamente o acesso direto pelo IP acima."
+            echo
+        fi
+
         echo "O certificado SSL é gratuito e sua renovação"
         echo "é configurada automaticamente."
         echo
