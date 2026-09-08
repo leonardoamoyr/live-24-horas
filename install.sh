@@ -58,7 +58,6 @@ trim() {
     echo "$1" | xargs
 }
 
-# Mensagem amigável se alguma etapa inesperada falhar
 trap '
 echo
 error "Ocorreu um erro durante a instalação."
@@ -329,7 +328,7 @@ echo
 echo "No primeiro acesso, crie sua conta de administrador."
 
 # ============================================================
-# PERGUNTAR SOBRE SSL
+# DOMÍNIO E SSL
 # ============================================================
 
 separator
@@ -353,37 +352,90 @@ case "$INSTALL_SSL" in
 
         separator
 
-        read -r -p "Digite seu subdomínio (ex: live.seudominio.com): " DOMAIN
+        # ====================================================
+        # SOLICITAR E CONFIRMAR SUBDOMÍNIO
+        # ====================================================
 
-        DOMAIN="$(trim "$DOMAIN")"
+        while true; do
 
-        # Remover protocolo se o usuário colar por engano
-        DOMAIN="${DOMAIN#http://}"
-        DOMAIN="${DOMAIN#https://}"
-        DOMAIN="${DOMAIN%%/*}"
-        DOMAIN="${DOMAIN%%:*}"
-
-        if [ -z "$DOMAIN" ]; then
             echo
-            error "Nenhum domínio foi informado."
-            echo
-            exit 1
-        fi
 
-        echo
-        info "Domínio informado: $DOMAIN"
+            read -r -p "Digite seu subdomínio (ex: live.seudominio.com): " DOMAIN
+
+            DOMAIN="$(trim "$DOMAIN")"
+
+            # Remove protocolo, caminho e porta caso o usuário
+            # informe por engano.
+            DOMAIN="${DOMAIN#http://}"
+            DOMAIN="${DOMAIN#https://}"
+            DOMAIN="${DOMAIN%%/*}"
+            DOMAIN="${DOMAIN%%:*}"
+
+            # Converte para letras minúsculas.
+            DOMAIN="$(echo "$DOMAIN" | tr '[:upper:]' '[:lower:]')"
+
+            if [ -z "$DOMAIN" ]; then
+                echo
+                error "Nenhum subdomínio foi informado."
+                echo
+                info "Digite novamente."
+                continue
+            fi
+
+            # Validação básica do formato.
+            if ! [[ "$DOMAIN" =~ ^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$ ]]; then
+                echo
+                error "O endereço informado não parece ser um domínio válido."
+                echo
+                echo "Exemplo:"
+                echo "live.seudominio.com"
+                echo
+                info "Digite novamente."
+                continue
+            fi
+
+            separator
+
+            echo -e "${BOLD}CONFIRA SEU SUBDOMÍNIO${NC}"
+            echo
+            echo "Você informou:"
+            echo
+            echo -e "${GREEN}${BOLD}${DOMAIN}${NC}"
+            echo
+            echo "O certificado SSL será instalado para este endereço."
+            echo
+
+            read -r -p "O subdomínio está correto? [s/N]: " CONFIRM_DOMAIN
+
+            case "$CONFIRM_DOMAIN" in
+
+                s|S|sim|SIM|Sim)
+                    echo
+                    ok "Subdomínio confirmado: $DOMAIN"
+                    break
+                    ;;
+
+                *)
+                    echo
+                    info "Sem problemas. Digite o subdomínio novamente."
+                    ;;
+
+            esac
+
+        done
 
         # ====================================================
         # VERIFICAR DNS
         # ====================================================
 
+        echo
         info "Verificando DNS do domínio..."
 
         DOMAIN_IP="$(dig +short A "$DOMAIN" | head -n 1 || true)"
 
         if [ -z "$DOMAIN_IP" ]; then
             echo
-            error "O domínio ainda não possui um registro A válido."
+            error "O subdomínio ainda não possui um registro A válido."
             echo
             echo "Configure seu DNS desta forma:"
             echo
@@ -391,7 +443,7 @@ case "$INSTALL_SSL" in
             echo "Nome: live"
             echo "Destino: ${PUBLIC_IP:-IP-DA-SUA-VPS}"
             echo
-            echo "Depois aguarde a propagação e execute novamente."
+            echo "Depois aguarde a propagação do DNS."
             echo
             exit 1
         fi
@@ -402,7 +454,7 @@ case "$INSTALL_SSL" in
         echo
 
         if [ -n "$PUBLIC_IP" ] && [ "$DOMAIN_IP" != "$PUBLIC_IP" ]; then
-            error "O domínio ainda não aponta para esta VPS."
+            error "O subdomínio ainda não aponta para esta VPS."
             echo
             echo "O DNS está apontando para:"
             echo "$DOMAIN_IP"
@@ -415,7 +467,7 @@ case "$INSTALL_SSL" in
             exit 1
         fi
 
-        ok "O domínio aponta para esta VPS."
+        ok "O subdomínio aponta corretamente para esta VPS."
 
         # ====================================================
         # VERIFICAR PORTA 80
@@ -433,8 +485,7 @@ case "$INSTALL_SSL" in
             echo
             warning "O Let's Encrypt pode não conseguir validar o domínio."
             echo
-            echo "Pare o serviço que utiliza a porta 80 e execute"
-            echo "a configuração SSL novamente."
+            echo "Pare o serviço que utiliza a porta 80 e tente novamente."
             echo
             exit 1
         fi
@@ -451,6 +502,8 @@ case "$INSTALL_SSL" in
         echo
         echo "O Ant Media utilizará Let's Encrypt para gerar"
         echo "gratuitamente o certificado HTTPS."
+        echo
+        echo "Aguarde. Esta etapa pode levar alguns instantes."
         echo
 
         cd "$ANTMEDIA_DIR"
@@ -497,8 +550,8 @@ case "$INSTALL_SSL" in
         echo
         echo -e "${GREEN}https://${DOMAIN}:5443${NC}"
         echo
-        echo "O certificado será renovado automaticamente"
-        echo "pelo mecanismo configurado pelo Ant Media/Let's Encrypt."
+        echo "O certificado SSL é gratuito e sua renovação"
+        echo "é configurada automaticamente."
         echo
         ;;
 
