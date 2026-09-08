@@ -13,7 +13,7 @@ set -Eeuo pipefail
 # CONFIGURAÇÕES
 # ============================================================
 
-ANTMEDIA_INSTALLER_URL="https://raw.githubusercontent.com/ant-media/Scripts/master/install-ant-media-server.sh"
+ANTMEDIA_INSTALLER_URL="https://raw.githubusercontent.com/ant-media/Scripts/master/install_ant-media-server.sh"
 ANTMEDIA_DIR="/usr/local/antmedia"
 TEMP_INSTALLER="/tmp/install-ant-media-server.sh"
 
