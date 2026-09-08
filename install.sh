@@ -9,9 +9,18 @@
 
 set -Eeuo pipefail
 
-# -----------------------------
-# Cores
-# -----------------------------
+# ============================================================
+# CONFIGURAÇÕES
+# ============================================================
+
+ANTMEDIA_INSTALLER_URL="https://raw.githubusercontent.com/ant-media/Scripts/master/install_ant-media-server.sh"
+ANTMEDIA_DIR="/usr/local/antmedia"
+TEMP_INSTALLER="/tmp/install-ant-media-server.sh"
+
+# ============================================================
+# CORES
+# ============================================================
+
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
@@ -19,9 +28,10 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-# -----------------------------
-# Funções
-# -----------------------------
+# ============================================================
+# FUNÇÕES
+# ============================================================
+
 ok() {
     echo -e "${GREEN}✓${NC} $1"
 }
@@ -44,10 +54,14 @@ separator() {
     echo
 }
 
-# -----------------------------
-# Cabeçalho
-# -----------------------------
-clear
+# Exibe mensagem amigável caso alguma etapa inesperada falhe.
+trap 'echo; error "Ocorreu um erro durante a instalação."; echo "Linha: $LINENO"; echo "Você pode executar novamente o instalador após corrigir o problema."; echo' ERR
+
+# ============================================================
+# CABEÇALHO
+# ============================================================
+
+clear 2>/dev/null || true
 
 echo
 echo -e "${BOLD}============================================================${NC}"
@@ -61,27 +75,31 @@ echo "Este projeto é independente e não possui vínculo oficial"
 echo "com a Ant Media."
 echo
 
-# -----------------------------
-# Verificar root
-# -----------------------------
+# ============================================================
+# VERIFICAR ROOT
+# ============================================================
+
 info "Verificando permissões..."
 
 if [ "$(id -u)" -ne 0 ]; then
     echo
     error "Este instalador precisa ser executado como root."
     echo
-    echo "Entre como root ou execute:"
+    echo "Entre como usuário root e execute novamente."
     echo
-    echo "sudo bash install.sh"
+    echo "Em muitas VPS você pode usar:"
+    echo
+    echo "sudo -i"
     echo
     exit 1
 fi
 
 ok "Permissões de administrador confirmadas."
 
-# -----------------------------
-# Verificar sistema operacional
-# -----------------------------
+# ============================================================
+# VERIFICAR SISTEMA OPERACIONAL
+# ============================================================
+
 info "Verificando sistema operacional..."
 
 if [ ! -f /etc/os-release ]; then
@@ -95,131 +113,223 @@ source /etc/os-release
 if [ "${ID:-}" != "ubuntu" ]; then
     echo
     error "Este instalador foi preparado para Ubuntu."
-    echo "Sistema detectado: ${PRETTY_NAME:-desconhecido}"
+    echo
+    echo "Sistema detectado:"
+    echo "${PRETTY_NAME:-desconhecido}"
+    echo
     exit 1
 fi
 
 ok "Sistema detectado: ${PRETTY_NAME}"
 
-# -----------------------------
-# Avisar sobre versões
-# -----------------------------
+# ============================================================
+# VERIFICAR VERSÃO DO UBUNTU
+# ============================================================
+
 case "${VERSION_ID:-}" in
-    "20.04"|"22.04"|"24.04")
-        ok "Versão Ubuntu reconhecida como compatível pelo instalador."
+
+    "20.04"|"22.04"|"24.04"|"26.04")
+
+        ok "Versão do Ubuntu reconhecida como compatível."
+
         ;;
+
     *)
+
         echo
-        warning "Você está utilizando Ubuntu ${VERSION_ID:-desconhecido}."
-        warning "Esta versão pode não estar na lista de versões oficialmente"
-        warning "suportadas pelo Ant Media Server."
+        warning "Ubuntu ${VERSION_ID:-desconhecido} detectado."
+        warning "Esta versão pode ainda não estar entre as versões"
+        warning "suportadas oficialmente pelo Ant Media Server."
         echo
+
         read -r -p "Deseja continuar mesmo assim? [s/N]: " CONTINUE
 
         case "$CONTINUE" in
+
             s|S|sim|SIM|Sim)
+                echo
+                warning "Continuando por escolha do usuário..."
                 ;;
+
             *)
                 echo
                 info "Instalação cancelada."
                 exit 0
                 ;;
+
         esac
+
         ;;
+
 esac
 
 separator
 
-# -----------------------------
-# Verificar instalação existente
-# -----------------------------
-info "Verificando se o Ant Media já está instalado..."
+# ============================================================
+# VERIFICAR INSTALAÇÃO EXISTENTE
+# ============================================================
 
-if [ -d "/usr/local/antmedia" ]; then
+info "Verificando se o Ant Media Server já está instalado..."
+
+if [ -d "$ANTMEDIA_DIR" ]; then
+
     echo
-    warning "Foi encontrada uma instalação do Ant Media em:"
-    echo "/usr/local/antmedia"
+    warning "Já existe uma instalação do Ant Media Server em:"
     echo
-    warning "Por segurança, este instalador não irá sobrescrevê-la."
+    echo "$ANTMEDIA_DIR"
+    echo
+    warning "Por segurança, nenhuma instalação existente será sobrescrita."
     echo
     exit 1
+
 fi
 
 ok "Nenhuma instalação existente encontrada."
 
-# -----------------------------
-# Verificar comandos necessários
-# -----------------------------
+# ============================================================
+# PREPARAR SERVIDOR
+# ============================================================
+
+separator
+
 info "Preparando o servidor..."
 
 export DEBIAN_FRONTEND=noninteractive
 
-apt-get update -y
-apt-get install -y curl wget ca-certificates
+apt-get update
 
-ok "Servidor preparado."
+apt-get install -y \
+    curl \
+    wget \
+    ca-certificates
+
+ok "Dependências básicas instaladas."
+
+# ============================================================
+# TESTAR INTERNET
+# ============================================================
+
+info "Verificando conexão com a internet..."
+
+if ! curl -fsS --max-time 10 https://github.com >/dev/null; then
+
+    echo
+    error "Não foi possível acessar o GitHub."
+    error "Verifique a conexão da VPS com a internet."
+    echo
+    exit 1
+
+fi
+
+ok "Conexão com a internet funcionando."
+
+# ============================================================
+# BAIXAR INSTALADOR OFICIAL DO ANT MEDIA
+# ============================================================
 
 separator
 
-# -----------------------------
-# Baixar instalador oficial
-# -----------------------------
 info "Baixando o instalador oficial do Ant Media Server..."
 
-INSTALLER="/tmp/install-ant-media-server.sh"
-
-rm -f "$INSTALLER"
+rm -f "$TEMP_INSTALLER"
 
 curl -fL \
-    https://raw.githubusercontent.com/ant-media/Scripts/master/install_ant-media_server.sh \
-    -o "$INSTALLER"
+    "$ANTMEDIA_INSTALLER_URL" \
+    -o "$TEMP_INSTALLER"
 
-chmod 755 "$INSTALLER"
+if [ ! -s "$TEMP_INSTALLER" ]; then
+
+    error "Não foi possível baixar o instalador oficial."
+    exit 1
+
+fi
+
+chmod 755 "$TEMP_INSTALLER"
 
 ok "Instalador oficial baixado."
 
-# -----------------------------
-# Instalar Ant Media
-# -----------------------------
+# ============================================================
+# INSTALAR ANT MEDIA SERVER
+# ============================================================
+
 separator
 
-echo -e "${BOLD}Instalando Ant Media Server...${NC}"
+echo -e "${BOLD}Instalando Ant Media Server Community Edition...${NC}"
 echo
 echo "Essa etapa pode levar alguns minutos."
 echo
+echo "Não feche o terminal durante a instalação."
+echo
 
-bash "$INSTALLER"
+bash "$TEMP_INSTALLER"
 
-# -----------------------------
-# Verificar instalação
-# -----------------------------
+# ============================================================
+# VERIFICAR PASTA DE INSTALAÇÃO
+# ============================================================
+
 separator
 
 info "Verificando instalação..."
 
-if [ ! -d "/usr/local/antmedia" ]; then
-    error "A pasta do Ant Media não foi encontrada após a instalação."
+if [ ! -d "$ANTMEDIA_DIR" ]; then
+
+    echo
+    error "A instalação terminou, mas a pasta do Ant Media"
+    error "não foi encontrada em:"
+    echo
+    echo "$ANTMEDIA_DIR"
+    echo
     exit 1
+
 fi
 
+ok "Arquivos do Ant Media Server encontrados."
+
+# ============================================================
+# VERIFICAR SERVIÇO
+# ============================================================
+
+info "Verificando serviço Ant Media..."
+
 if ! systemctl is-active --quiet antmedia; then
+
     echo
-    error "O Ant Media foi instalado, mas o serviço não está ativo."
+    error "O Ant Media Server foi instalado,"
+    error "mas o serviço não está ativo."
     echo
     echo "Para investigar, execute:"
     echo
     echo "systemctl status antmedia --no-pager"
     echo
     exit 1
+
 fi
 
-ok "Ant Media Server instalado."
-ok "Serviço Ant Media está rodando."
+ok "Ant Media Server está rodando."
 
-# -----------------------------
-# Descobrir IP público
-# -----------------------------
-info "Identificando o endereço da VPS..."
+# ============================================================
+# VERIFICAR PORTA DO PAINEL
+# ============================================================
+
+info "Verificando painel de administração..."
+
+if ss -ltn 2>/dev/null | grep -q ':5080 '; then
+
+    ok "Painel do Ant Media está disponível na porta 5080."
+
+else
+
+    warning "O serviço está ativo, mas a porta 5080"
+    warning "não foi detectada imediatamente."
+    warning "Ela pode levar alguns segundos para ficar disponível."
+
+fi
+
+# ============================================================
+# DESCOBRIR IP PÚBLICO
+# ============================================================
+
+info "Identificando o IP público da VPS..."
 
 PUBLIC_IP=""
 
@@ -229,23 +339,47 @@ if [ -z "$PUBLIC_IP" ]; then
     PUBLIC_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 fi
 
-# -----------------------------
-# Resultado
-# -----------------------------
+if [ -n "$PUBLIC_IP" ]; then
+
+    ok "IP encontrado: $PUBLIC_IP"
+
+else
+
+    warning "Não foi possível identificar automaticamente o IP da VPS."
+
+fi
+
+# ============================================================
+# REMOVER ARQUIVO TEMPORÁRIO
+# ============================================================
+
+rm -f "$TEMP_INSTALLER"
+
+# ============================================================
+# RESULTADO
+# ============================================================
+
 separator
 
-echo -e "${GREEN}${BOLD}           INSTALAÇÃO CONCLUÍDA! 🎉${NC}"
+echo -e "${GREEN}${BOLD}              INSTALAÇÃO CONCLUÍDA!${NC}"
 
 separator
+
+echo -e "${BOLD}Ant Media Server Community Edition está instalado.${NC}"
+echo
 
 if [ -n "$PUBLIC_IP" ]; then
-    echo -e "${BOLD}Abra o painel do Ant Media no navegador:${NC}"
+
+    echo -e "${BOLD}Abra o painel no navegador:${NC}"
     echo
     echo -e "${GREEN}http://${PUBLIC_IP}:5080${NC}"
+
 else
-    echo "Abra o painel utilizando:"
+
+    echo -e "${BOLD}Abra o painel no navegador utilizando:${NC}"
     echo
     echo -e "${GREEN}http://IP-DA-SUA-VPS:5080${NC}"
+
 fi
 
 echo
@@ -254,9 +388,24 @@ echo "a criação da conta de administrador."
 
 separator
 
-echo -e "${BOLD}Live 24 Horas${NC}"
-echo "Instalação simplificada para transmissões 24/7."
+echo -e "${BOLD}PRÓXIMOS PASSOS${NC}"
 echo
-echo "Ant Media Server é um projeto da Ant Media."
-echo "Este instalador é um projeto independente."
+echo "1. Abra o endereço acima no navegador."
+echo "2. Crie sua conta de administrador."
+echo "3. Entre no painel do Ant Media."
+echo "4. Faça upload do seu vídeo."
+echo "5. Crie uma playlist."
+echo "6. Ative o Loop Playlist."
+echo "7. Inicie sua transmissão."
+echo
+
+separator
+
+echo -e "${BOLD}Live 24 Horas${NC}"
+echo
+echo "Projeto independente para simplificar a instalação"
+echo "do Ant Media Server Community Edition."
+echo
+echo "Ant Media Server e suas marcas pertencem"
+echo "aos seus respectivos proprietários."
 echo
